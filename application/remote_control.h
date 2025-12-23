@@ -59,8 +59,13 @@ typedef __packed struct
 {
         __packed struct
         {
-                int16_t ch[5];
-                char s[2];
+                int16_t ch[5];          /*4 entries are for the 2 joysticks, where 2 entries 
+																				read from each joystick, where 1 handles up/down and 
+																				the other one handles left/right. 1 more entry for 
+																				the left top wheel.*/
+                char s[2];							/*reads the states of the 2 switches at top left and 
+																				top right of the RC. Each entry counts for 1 switch, 
+																				and each switch has the states {1,2,3}.*/
         } rc;
         __packed struct
         {
