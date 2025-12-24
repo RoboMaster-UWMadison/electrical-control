@@ -1,14 +1,19 @@
 /**
   ****************************(C) COPYRIGHT 2019 DJI****************************
   * @file       remote_control.c/h
-  * @brief      遥控器处理，遥控器是通过类似SBUS的协议传输，利用DMA传输方式节约CPU
-  *             资源，利用串口空闲中断来拉起处理函数，同时提供一些掉线重启DMA，串口
-  *             的方式保证热插拔的稳定性。
-  * @note       该任务是通过串口中断启动，不是freeRTOS任务
+  * @brief      Remote Control Processing. 
+  * The remote controller transmits data via an SBUS-like protocol.
+  * This module uses DMA transfers to save CPU resources and utilizes 
+  * the UART Idle Line interrupt to trigger the processing function.
+  * It also provides mechanisms to restart the DMA/UART in case of 
+  * connection loss, ensuring stability during hot-plugging.
+  * @note       This process is triggered by UART interrupts; it is NOT a freeRTOS task.
   * @history
-  *  Version    Date            Author          Modification
-  *  V1.0.0     Dec-26-2018     RM              1. done
-  *  V1.0.0     Nov-11-2019     RM              1. support development board tpye c
+  * Version    Date            Author          Modification
+  * V1.0.0     Dec-26-2018     RM              1. Initial release/completed.
+  * V1.0.0     Nov-11-2019     RM              1. Added support for Type-C development board.
+  * V1.0.0     Nov-11-2024     Charlie         Adapt code to UW-Madison Infantry 3.
+  * V1.0.0     Dec-24-2025     Chongda         Refactor code logic and add English comments/documentation.
   *
   @verbatim
   ==============================================================================
@@ -33,8 +38,8 @@ extern DMA_HandleTypeDef hdma_usart3_rx;
 
 /**
   * @brief          get absolute value
-	* @param[in]      value: original value
-	* @retval         absolute value of value
+  * @param[in]      value: original value
+  * @retval         absolute value of value
   */
 static int16_t RC_abs(int16_t value);
 /**
@@ -98,18 +103,17 @@ const RC_ctrl_t *get_remote_control_point(void)
 uint8_t RC_data_is_error(void)
 {
     if (RC_abs(rc_ctrl.rc.ch[0]) > RC_CHANNAL_ERROR_VALUE || 
-				RC_abs(rc_ctrl.rc.ch[1]) > RC_CHANNAL_ERROR_VALUE ||
-				RC_abs(rc_ctrl.rc.ch[2]) > RC_CHANNAL_ERROR_VALUE ||
-				RC_abs(rc_ctrl.rc.ch[3]) > RC_CHANNAL_ERROR_VALUE ||
-				rc_ctrl.rc.s[0] == 0 ||
-				rc_ctrl.rc.s[1] == 0
-		)
-    {
-      memset(&rc_ctrl.rc.ch, 0, sizeof(rc_ctrl.rc.ch));
-			memset(&rc_ctrl.rc.s, RC_SW_DOWN, sizeof(rc_ctrl.rc.s));
-			memset(&rc_ctrl.mouse, 0, sizeof(rc_ctrl.mouse));
-      rc_ctrl.key.v = 0;
-      return 1;
+		RC_abs(rc_ctrl.rc.ch[1]) > RC_CHANNAL_ERROR_VALUE ||
+		RC_abs(rc_ctrl.rc.ch[2]) > RC_CHANNAL_ERROR_VALUE ||
+		RC_abs(rc_ctrl.rc.ch[3]) > RC_CHANNAL_ERROR_VALUE ||
+		rc_ctrl.rc.s[0] == 0 ||
+		rc_ctrl.rc.s[1] == 0
+	) {
+		memset(&rc_ctrl.rc.ch, 0, sizeof(rc_ctrl.rc.ch));
+		memset(&rc_ctrl.rc.s, RC_SW_DOWN, sizeof(rc_ctrl.rc.s));
+		memset(&rc_ctrl.mouse, 0, sizeof(rc_ctrl.mouse));
+		rc_ctrl.key.v = 0;
+		return 1;
     }
     return 0;
 }
@@ -128,16 +132,25 @@ void slove_data_error(void)
 }
 
 //串口中断
+/**
+  * @brief          Handler for Serial Port (UART3) interrupt. Only interpret full chunk data.
+  * 				Use Ping-Pong handling to alternate receiving buffere between Memory 1 and Memory 0.
+  * @note			This function modifies the global variable "rc_ctrl".
+  * @note			This Interrupt Service Routine (IRS) disables DMA briefly to switch buffers (Double Buffering).
+  * retval          none
+  */
 void USART3_IRQHandler(void)
 {
-    if(huart3.Instance->SR & UART_FLAG_RXNE)//接收到数据 receives data
+    if(huart3.Instance->SR & UART_FLAG_RXNE)// receives a single byte (or just incomplete) data
     {
-        __HAL_UART_CLEAR_PEFLAG(&huart3);
+		__HAL_UART_CLEAR_PEFLAG(&huart3);
+		return;
     }
-    else if(USART3->SR & UART_FLAG_IDLE)
+		
+	if(USART3->SR & UART_FLAG_IDLE) // receives fall length data
     {
         static uint16_t this_time_rx_len = 0;
-				uint16_t mem_buf_index = (hdma_usart3_rx.Instance->CR & DMA_SxCR_CT) == RESET ? 0 : 1;
+		uint16_t mem_buf_index = (hdma_usart3_rx.Instance->CR & DMA_SxCR_CT) == RESET ? 0 : 1;
 
         __HAL_UART_CLEAR_PEFLAG(&huart3);
 
@@ -153,16 +166,16 @@ void USART3_IRQHandler(void)
         //重新设定数据长度
         hdma_usart3_rx.Instance->NDTR = SBUS_RX_BUF_NUM;
 
-				// set memory buffer 1 if Memory 0 is used; set memory buffer 0 if Mmeory 1 is used
+		// set memory buffer 1 if Memory 0 is used; set memory buffer 0 if Mmeory 1 is used
         if (mem_buf_index == 0) {
-					//set memory buffer 1
-          //设定缓冲区1
-					hdma_usart3_rx.Instance->CR |= DMA_SxCR_CT;
-				} else {
-					//set memory buffer 0
-          //设定缓冲区0
-					DMA1_Stream1->CR &= ~(DMA_SxCR_CT);
-				}
+		//set memory buffer 1
+        //设定缓冲区1
+			hdma_usart3_rx.Instance->CR |= DMA_SxCR_CT;
+		} else {
+			//set memory buffer 0
+			//设定缓冲区0
+			DMA1_Stream1->CR &= ~(DMA_SxCR_CT);
+		}
             
         //enable DMA
         //使能DMA
@@ -172,16 +185,17 @@ void USART3_IRQHandler(void)
         {
             sbus_to_rc(sbus_rx_buf[mem_buf_index], &rc_ctrl);
             //记录数据接收时间
-						// record time that data is received [not implemented]
+			// record time that data is received [not implemented]
 
         }
     }
 }
 
+// [not used]
 /**
   * @brief          get absolute value
-	* @param[in]      value: original value
-	* @retval         absolute value of value
+  * @param[in]      value: original value
+  * @retval         absolute value of value
   */
 static int16_t RC_abs(int16_t value)
 {
@@ -219,37 +233,37 @@ static void sbus_to_rc(volatile const uint8_t *sbus_buf, RC_ctrl_t *rc_ctrl)
     rc_ctrl->rc.ch[2] = ((sbus_buf[2] >> 6) | (sbus_buf[3] << 2) |          //!< Channel 2
                          (sbus_buf[4] << 10)) &0x07ff;
     rc_ctrl->rc.ch[3] = ((sbus_buf[4] >> 1) | (sbus_buf[5] << 7)) & 0x07ff; //!< Channel 3
-    rc_ctrl->rc.s[0] = ((sbus_buf[5] >> 4) & 0x0003);                  //!< Switch left
+    rc_ctrl->rc.s[0] = ((sbus_buf[5] >> 4) & 0x0003);                  		//!< Switch left
     rc_ctrl->rc.s[1] = ((sbus_buf[5] >> 4) & 0x000C) >> 2;                       //!< Switch right
     rc_ctrl->mouse.x = sbus_buf[6] | (sbus_buf[7] << 8);                    //!< Mouse X axis
     rc_ctrl->mouse.y = sbus_buf[8] | (sbus_buf[9] << 8);                    //!< Mouse Y axis
     rc_ctrl->mouse.z = sbus_buf[10] | (sbus_buf[11] << 8);                  //!< Mouse Z axis
     rc_ctrl->mouse.press_l = sbus_buf[12];                                  //!< Mouse Left Is Press ?
     rc_ctrl->mouse.press_r = sbus_buf[13];                                  //!< Mouse Right Is Press ?
-    // 假设 rc_ctrl 已经通过 sbus_to_rc 解析完毕
-uint16_t key_value = sbus_buf[14] | (sbus_buf[15] << 8);
+	
+	// get the entire 16 bits of key values, and assigning each to each key
+	uint16_t key_value = sbus_buf[14] | (sbus_buf[15] << 8);
+	rc_ctrl->key.w    = (key_value & KEY_PRESSED_OFFSET_W)     ? 1 : 0;
+	rc_ctrl->key.s     = (key_value & KEY_PRESSED_OFFSET_S)     ? 1 : 0;
+	rc_ctrl->key.a     = (key_value & KEY_PRESSED_OFFSET_A)     ? 1 : 0;
+	rc_ctrl->key.d     = (key_value & KEY_PRESSED_OFFSET_D)     ? 1 : 0;
+	rc_ctrl->key.shift = (key_value & KEY_PRESSED_OFFSET_SHIFT) ? 1 : 0;
+	rc_ctrl->key.ctrl   = (key_value & KEY_PRESSED_OFFSET_CTRL)  ? 1 : 0;
+	rc_ctrl->key.q     = (key_value & KEY_PRESSED_OFFSET_Q)     ? 1 : 0;
+	rc_ctrl->key.e     = (key_value & KEY_PRESSED_OFFSET_E)     ? 1 : 0;
+	rc_ctrl->key.r     = (key_value & KEY_PRESSED_OFFSET_R)     ? 1 : 0;
+	rc_ctrl->key.f     = (key_value & KEY_PRESSED_OFFSET_F)     ? 1 : 0;
+	rc_ctrl->key.g     = (key_value & KEY_PRESSED_OFFSET_G)     ? 1 : 0;
+	rc_ctrl->key.z     = (key_value & KEY_PRESSED_OFFSET_Z)     ? 1 : 0;
+	rc_ctrl->key.x     = (key_value & KEY_PRESSED_OFFSET_X)     ? 1 : 0;
+	rc_ctrl->key.c     = (key_value & KEY_PRESSED_OFFSET_C)     ? 1 : 0;
+	rc_ctrl->key.v     = (key_value & KEY_PRESSED_OFFSET_V)     ? 1 : 0;
+	rc_ctrl->key.b     = (key_value & KEY_PRESSED_OFFSET_B)     ? 1 : 0;
 
-// 直接按位判断每个键的状态
-rc_ctrl->key.w    = (key_value & KEY_PRESSED_OFFSET_W)     ? 1 : 0;
-rc_ctrl->key.s     = (key_value & KEY_PRESSED_OFFSET_S)     ? 1 : 0;
-rc_ctrl->key.a     = (key_value & KEY_PRESSED_OFFSET_A)     ? 1 : 0;
-rc_ctrl->key.d     = (key_value & KEY_PRESSED_OFFSET_D)     ? 1 : 0;
-rc_ctrl->key.shift = (key_value & KEY_PRESSED_OFFSET_SHIFT) ? 1 : 0;
-rc_ctrl->key.ctrl   = (key_value & KEY_PRESSED_OFFSET_CTRL)  ? 1 : 0;
-rc_ctrl->key.q     = (key_value & KEY_PRESSED_OFFSET_Q)     ? 1 : 0;
-rc_ctrl->key.e     = (key_value & KEY_PRESSED_OFFSET_E)     ? 1 : 0;
-rc_ctrl->key.r     = (key_value & KEY_PRESSED_OFFSET_R)     ? 1 : 0;
-rc_ctrl->key.f     = (key_value & KEY_PRESSED_OFFSET_F)     ? 1 : 0;
-rc_ctrl->key.g     = (key_value & KEY_PRESSED_OFFSET_G)     ? 1 : 0;
-rc_ctrl->key.z     = (key_value & KEY_PRESSED_OFFSET_Z)     ? 1 : 0;
-rc_ctrl->key.x     = (key_value & KEY_PRESSED_OFFSET_X)     ? 1 : 0;
-rc_ctrl->key.c     = (key_value & KEY_PRESSED_OFFSET_C)     ? 1 : 0;
-rc_ctrl->key.v     = (key_value & KEY_PRESSED_OFFSET_V)     ? 1 : 0;
-rc_ctrl->key.b     = (key_value & KEY_PRESSED_OFFSET_B)     ? 1 : 0;
+    // top left rolling wheel
+    rc_ctrl->rc.ch[4] = sbus_buf[16] | (sbus_buf[17] << 8);
 
-    
-    rc_ctrl->rc.ch[4] = sbus_buf[16] | (sbus_buf[17] << 8);                 //NULL
-
+	// unsure what why this is, but it is correct
     rc_ctrl->rc.ch[0] -= RC_CH_VALUE_OFFSET;
     rc_ctrl->rc.ch[1] -= RC_CH_VALUE_OFFSET -6;
     rc_ctrl->rc.ch[2] -= RC_CH_VALUE_OFFSET;
