@@ -1,0 +1,4 @@
+remote_control.c, sbus_to_rc()
+		  reference and sample code for handling sbus buffer is in https://rm-static.djicdn.com/tem/17348/4.RoboMaster%20%E6%9C%BA%E5%99%A8%E4%BA%BA%E4%B8%93%E7%94%A8%E9%81%A5%E6%8E%A7%E5%99%A8%EF%BC%88%E6%8E%A5%E6%94%B6%E6%9C%BA%EF%BC%89%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C.pdf
+		  reference table -> pg 6
+		  sample code -> pg 8
