@@ -68,7 +68,8 @@ static void gimbal_control_loop(gimbal_control_t *control_loop);
   * @param[in]      set: 角度设定
   * @retval         pid 输出
   */
-static float PID_Calculate_gimbal(PID_TypeDef *pid, float measure, float target);
+/** [unused]
+static float PID_Calculate_gimbal(PID_TypeDef *pid, float measure, float target); */
 /**
   * @brief          云台控制模式:GIMBAL_MOTOR_GYRO，使用陀螺仪计算的欧拉角进行控制
   * @param[out]     gimbal_motor:yaw电机或者pitch电机
@@ -374,6 +375,7 @@ static void gimbal_motor_absolute_angle_control(gimbal_motor_t *gimbal_motor)
   * @param[out]     gimbal_motor:yaw电机或者pitch电机
   * @retval         none
   */
+/** [not used]
 static void gimbal_motor_relative_angle_control(gimbal_motor_t *gimbal_motor)
 {
     if (gimbal_motor == NULL)
@@ -388,6 +390,8 @@ static void gimbal_motor_relative_angle_control(gimbal_motor_t *gimbal_motor)
     gimbal_motor->given_current = (int16_t)(gimbal_motor->current_set);
 
 }
+*/
+
 /**
   * @brief          控制循环，根据控制设定值，计算电机电流值，进行控制
   * @param[out]     gimbal_control_loop:"gimbal_control"变量指针.
@@ -441,11 +445,12 @@ static void gimbal_control_loop(gimbal_control_t *control_loop)
     
 }
 /*****************PID Improvement Function*********************/
+/** [unused]
 static void f_Trapezoid_Intergral(PID_TypeDef *pid)
 {
     pid->ITerm = pid->Ki * ((pid->Err + pid->Last_Err) / 2);
-}
-
+} */
+/** [unused]
 static void f_Changing_Integral_Rate(PID_TypeDef *pid)
 {
     if (pid->Err * pid->Iout > 0)
@@ -458,8 +463,8 @@ static void f_Changing_Integral_Rate(PID_TypeDef *pid)
         else
             pid->ITerm = 0;
     }
-}
-
+} */
+/** [unused]
 static void f_Integral_Limit(PID_TypeDef *pid)
 {
     float temp_Output, temp_Iout;
@@ -484,25 +489,25 @@ static void f_Integral_Limit(PID_TypeDef *pid)
         pid->ITerm = 0;
         pid->Iout = -pid->IntegralLimit;
     }
-}
-
+} */
+/** [unused]
 static void f_Derivative_On_Measurement(PID_TypeDef *pid)
 {
     pid->Dout = pid->Kd * (pid->Last_Measure - pid->Measure);
-}
-
+} */
+/** [unused]
 static void f_Derivative_Filter(PID_TypeDef *pid)
 {
     pid->Dout = pid->Dout * pid->Derivative_Filtering_Coefficient +
                 pid->Last_Dout * (1 - pid->Derivative_Filtering_Coefficient);
-}
-
+} */
+/**
 static void f_Output_Filter(PID_TypeDef *pid)
 {
     pid->Output = pid->Output * pid->Output_Filtering_Coefficient +
                   pid->Last_Output * (1 - pid->Output_Filtering_Coefficient);
-}
-
+} */
+/** [unused]
 static void f_Output_Limit(PID_TypeDef *pid)
 {
     if (pid->Output > pid->MaxOut)
@@ -513,8 +518,8 @@ static void f_Output_Limit(PID_TypeDef *pid)
     {
         pid->Output = -(pid->MaxOut);
     }
-}
-
+} */
+/** [unused]
 static void f_Proportion_Limit(PID_TypeDef *pid)
 {
     //Proportion limit is insignificant in control process
@@ -527,16 +532,17 @@ static void f_Proportion_Limit(PID_TypeDef *pid)
     {
         pid->Pout = -(pid->MaxOut);
     }
-}
+} */
 
 
 
 
 
 /*****************PID ERRORHandle Function*********************/
+/** [unused]
 static void f_PID_ErrorHandle(PID_TypeDef *pid)
 {
-    /*Motor Blocked Handle*/
+    //Motor Blocked Handle
     if (pid->Output < pid->MaxOut * 0.01f)
         return;
 
@@ -555,7 +561,8 @@ static void f_PID_ErrorHandle(PID_TypeDef *pid)
         //Motor blocked over 1000times
         pid->ERRORHandler.ERRORType = Motor_Blocked;
     }
-}
+} */
+/** [not used]
 static float PID_Calculate_gimbal(PID_TypeDef *pid, float measure, float target)
 {
     if (pid->Improve & ErrorHandle) //ErrorHandle
@@ -615,4 +622,4 @@ static float PID_Calculate_gimbal(PID_TypeDef *pid, float measure, float target)
     
 
     return pid->Output;
-}
+} */

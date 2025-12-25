@@ -483,6 +483,7 @@ void get_angle(FusionQuaternion q, fp32 *pitch, fp32 *roll, fp32 *yaw)
                    1.0f - 2.0f * (q.array[1]*q.array[1] + q.array[2]*q.array[2]));
 }
 
+/** [not used]
 static fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd)
 {
     int32_t relative_ecd = ecd - offset_ecd;
@@ -496,5 +497,5 @@ static fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd)
     }
 
     return relative_ecd * 0.000766990394f; //      2*  PI  /8192
-}
+} */
 
