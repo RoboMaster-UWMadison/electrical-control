@@ -1,15 +1,15 @@
+#include "arm_math.h"
 #include "chassis_task.h"
 #include "chassis_behaviour.h"
 #include "cmsis_os.h"
-
-#include "arm_math.h"
+#include "detect_task.h"
+#include "INS_task.h"
+#include "motor_CAN.h"
 #include "pid.h"
 #include "pid_dji.h"
 #include "remote_control.h"
-#include "motor_CAN.h"
-#include "detect_task.h"
-#include "INS_task.h"
 #include "volt.h"
+
 #define rc_deadband_limit(input, output, dealine)        \
     {                                                    \
         if ((input) > (dealine) || (input) < -(dealine)) \
@@ -24,64 +24,108 @@
 
 /**
   * @brief         	Initialize chassis_move, including the initialization of pid, remote control pointer, 
-	* 												3508 chassis motor pointer, INS_angle
-	* 								初始化"chassis_move"变量，包括pid初始化， 遥控器指针初始化，3508底盘电机指针初始化，陀螺仪角度指针初始化
-  * @param[out]     chassis_move_init Output chassis_move_t struct pointer initialized
+  * 				3508 chassis motor pointer, and INS_angle pointer.
+  * 				初始化"chassis_move"变量，包括pid初始化， 遥控器指针初始化，3508底盘电机指针初始化，陀螺仪角度指针初始化
+  * @param[out]     chassis_move_init: Output chassis_move_t struct pointer initialized
   */
 static void chassis_init(chassis_move_t *chassis_move_init);
 
 /**
-  * @brief          设置底盘控制模式，主要在'chassis_behaviour_mode_set'函数中改变
-  * @param[out]     chassis_move_mode:"chassis_move"变量指针.
+  * @brief          Set chassis control mode by changing "chassis_bahaviour_mode_set" variable.
+  *                 设置底盘控制模式，主要在'chassis_behaviour_mode_set'函数中改变
+  * @param[out]     chassis_move_mode: pointer to the "chassis_move" structure.
+  *                 "chassis_move"变量指针.
   * @retval         none
   */
 static void chassis_set_mode(chassis_move_t *chassis_move_mode);
 /**
-  * @brief          底盘模式改变，有些参数需要改变，例如底盘控制yaw角度设定值应该变成当前底盘yaw角度
-  * @param[out]     chassis_move_transit:"chassis_move"变量指针.
+  * @brief          Change necessary parameters after chassis mode changes, such as setting the yaw
+  *                 setpoint to current yaw angle.
+  *                 底盘模式改变，有些参数需要改变，例如底盘控制yaw角度设定值应该变成当前底盘yaw角度
+  * @param[out]     chassis_move_transit: pointer to the "chassis_move" structure.
+  *                 "chassis_move"变量指针.
   * @retval         none
   */
 void chassis_mode_change_control_transit(chassis_move_t *chassis_move_transit);
 /**
-  * @brief          底盘测量数据更新，包括电机速度，欧拉角度，机器人速度
-  * @param[out]     chassis_move_update:"chassis_move"变量指针.
+  * @brief          Update chassis feedback data, including motor speeds, Euler angles, and robot velocity.
+  *                 底盘测量数据更新，包括电机速度，欧拉角度，机器人速度
+  * @param[out]     chassis_move_update: pointer to the "chassis_move" structure.
+  *                 "chassis_move"变量指针.
   * @retval         none
   */
 static void chassis_feedback_update(chassis_move_t *chassis_move_update);
 /**
-  * @brief          
-  * @param[out]     chassis_move_update:"chassis_move"变量指针.
+  * @brief          ?
+  * @param[out]     chassis_move_update: pointer to the "chassis_move" structure.
+  *                 "chassis_move"变量指针.
   * @retval         none
   */
 static void chassis_set_control(chassis_move_t *chassis_move_control);
 /**
-  * @brief          控制循环，根据控制设定值，计算电机电流值，进行控制
-  * @param[out]     chassis_move_control_loop:"chassis_move"变量指针.
+  * @brief          Chassis control loop, calculate motor current based on control setpoints.
+  *                 控制循环，根据控制设定值，计算电机电流值，进行控制
+  * @param[out]     chassis_move_control_loop: pointer to the "chassis_move" structure.
+  *                 "chassis_move"变量指针.
   * @retval         none
   */
 static void chassis_control_loop(chassis_move_t *chassis_move_control_loop);
 
+/**
+  * @brief          Global pointer to chassis current data.
+  * @note           Initialized in chassis_init().
+  */
 chassis_move_t chassis_move;
 //麦轮赋值矩阵
-fp32 M[3][4] = {{   -1.0f,   -1.0f,     1.0f,   1.0f},
-                {    -1.0f,   1.0f,    1.0f,   -1.0f},
-                { 2.5f,       2.5f,    2.5f,    2.5f}};
-fp32 yaw_offset;
-static void vector_ground_convert(fp32 *vx_set, fp32 *vy_set, fp32 *angle);
 /**
-  * @brief          底盘任务，间隔 CHASSIS_CONTROL_TIME_MS 2ms
-  * @param[in]      pvParameters: 空
-  * @retval         none
+  * @brief          Macanum wheel coupling matrix.
+  * @note           Translate target movement to individual wheel speeds with 
+  *                 Wheel_Speed = This_Matrix(4x3) X Chassis_Vector(Vx,Vy,angular_velocity).
+  * @note           The matrix is stored as transpose so each row corresponds to an action.
+  */
+static fp32 M[3][4] = {{   -1.0f,   -1.0f,    1.0f,    1.0f},
+                       {   -1.0f,    1.0f,    1.0f,   -1.0f},
+                       {    2.5f,    2.5f,    2.5f,    2.5f}};
+
+/** @brief          ?
+  */
+fp32 yaw_offset;
+
+/**
+  * @brief          ?
+  */
+static void vector_ground_convert(fp32 *vx_set, fp32 *vy_set, fp32 *angle);
+
+/**
+  * @brief          ?
+  * @param[in]      ecd: ?
+  * @param[in]      offset_ecd: ?
+  * @retval         ?
   */
 static fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd);
-int8_t q,last_q,q_flag;
-fp32 gear_z,gear_xy;
-fp32 gear_xylevel[3],gear_zlevel[3];
+
+static int8_t  q,                /**< boolean for chassis rotate (on/off) */
+	           last_q,           /**< last chassis rotate mode */
+	           q_flag;           /**< ? */
+// TODO: move these to chassis_task.h?
+// TODO: change to enum?
+static fp32    gear_xy,          /**< Index in gear_xylevel for upper speed limit of translational movement. */
+               gear_z;           /**< Index in gear_zlevel for upper speed limit of orientational movement. */
+// TODO: set values for now, can change to dynamic based on competition API later
+static fp32    gear_xylevel[3],  /**< Stores corresponding translational speed limit for each of 3 mode. */
+               gear_zlevel[3];   /**< Stores corresponding orientational speed limit for each of 3 mode. */
+
+/**
+  * @brief          Chassis task, runs at an interval of CHASSIS_CONTROL_TIME_MS (2ms).
+  *                 底盘任务，间隔 CHASSIS_CONTROL_TIME_MS 2ms
+  * @param[in]      pvParameters: None
+  * @retval         none
+  */
 void chassis_task(void const *pvParameters)
 {
     //空闲一段时间
     vTaskDelay(CHASSIS_TASK_INIT_TIME);
-  //底盘初始化
+    //底盘初始化
     chassis_init(&chassis_move);
     while (1)
     {
