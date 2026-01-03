@@ -8,10 +8,6 @@
 #include "user_lib.h"
 //任务开始空闲一段时间
 #define CHASSIS_TASK_INIT_TIME 357
-//前后的遥控器通道号码
-#define CHASSIS_X_CHANNEL 3
-//左右的遥控器通道号码
-#define CHASSIS_Y_CHANNEL 2
 //选择底盘状态 开关通道号
 #define CHASSIS_MODE_CHANNEL  1
 //遥控器前进摇杆（max 660）转化成车体前进速度（m/s）的比例
@@ -21,7 +17,8 @@
 //跟随底盘yaw模式下，遥控器的yaw遥杆（max 660）增加到车体角度的比例
 #define CHASSIS_ANGLE_Z_RC_SEN 0.000002f
 //不跟随云台的时候 遥控器的yaw遥杆（max 660）转化成车体旋转速度的比例
-#define CHASSIS_WZ_RC_SEN 0.01f
+// when not in CHASSIS_FOLLOW_GIMBAL mode, the ratio between remote control yaw channel read (max 660) to chassis rotate speed
+#define CHASSIS_WZ_RC_SEN (-0.0025f)
 #define CHASSIS_ACCEL_X_NUM 0.1666666667f
 #define CHASSIS_ACCEL_Y_NUM 0.3333333333f
 //摇杆死区
@@ -77,6 +74,23 @@ typedef enum
   GIMBAL_FOLLOW_CHASSIS,  //云台跟随底盘
   CHASSIS_ZERO_FORCE            /* <control-current will be sent to CAN bus derectly.*/
 } chassis_mode_e;
+
+typedef enum
+{
+    CHASSIS_ROTATE_ON = 1,
+    CHASSIS_ROTATE_OFF = -1
+} chassis_rotate_mode_e;
+
+//TODO: find out index for gimbal up/down and left/right
+//TODO: move this enum to proper place because it also include information about gimbal
+typedef enum
+{
+	GIMBAL_YAW_CHANNEL = 0,   /**<remote control bimbal left/right channel*/
+	GIMBAL_PITCH_CHANNEL,     /**<remote control gimbal up/down channel*/
+    CHASSIS_Y_CHANNEL,        /**<remote control chassis lateral channel*/
+	CHASSIS_X_CHANNEL,        /**<remote control chassis longitudinal channel*/
+	CHASSIS_WZ_CHANNEL        /**<remote control chassis rotational channel*/
+} rc_ch_index_e;
 
 typedef struct
 {

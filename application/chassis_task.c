@@ -202,7 +202,7 @@ static void chassis_init(chassis_move_t *chassis_move_init)
     
     q = 0;
 	last_q = 0;
-    q_flag = 1;
+    q_flag = CHASSIS_ROTATE_OFF;
     gear_zlevel[0] = 0.3f;
     gear_zlevel[1] = 0.5f;
     gear_zlevel[2] = 0.6f;
@@ -272,16 +272,58 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
     }
     fp32 vx_set = 0.0f, vy_set = 0.0f, wz_set = 0.0f;
     //获取三个控制设置值
+	// get longitudinal and lateral values
     chassis_rc_to_control_vector(&vx_set, &vy_set, chassis_move_control);
+	
+	// get rotational value
     last_q = q;
     q = chassis_move_control->chassis_RC->key.q;
     if(q  - last_q == 1)
     {
-
-      q_flag*=-1;
-    }     
-        
-  if(q_flag == 1 && chassis_move_control->chassis_RC->rc.ch[4] == 0)
+        q_flag*=-1;
+    }
+	
+	if (chassis_move_control->chassis_RC->rc.ch[CHASSIS_WZ_CHANNEL])
+	{
+	    wz_set = chassis_move_control->chassis_RC->rc.ch[CHASSIS_WZ_CHANNEL] * CHASSIS_WZ_RC_SEN;
+	}
+	else if (q_flag == CHASSIS_ROTATE_OFF) 
+	{
+	    wz_set = 0.0f;
+        if(chassis_move_control->chassis_RC->key.f)
+        {
+			// will later switch to dynamic speed limit based on robot live data, 
+			// so not changing the index to macro
+            gear_z = gear_zlevel[0];
+            gear_xy = gear_xylevel[0];
+        }
+        else if(chassis_move_control->chassis_RC->key.g)
+        {
+            gear_z = gear_zlevel[1];
+            gear_xy = gear_xylevel[1];
+        }
+        else if(chassis_move_control->chassis_RC->key.v)
+        {
+            gear_z = gear_zlevel[2];
+            gear_xy = gear_xylevel[2];
+        }
+	}
+	else if (q_flag == CHASSIS_ROTATE_ON)
+	{
+	    wz_set = gear_z;
+        //无水平运动则增加转速
+		// if no translational (longitudinal or lateral) movement, then increase rotational speed
+        if(!(chassis_move_control->chassis_RC->key.s || 
+			 chassis_move_control->chassis_RC->key.a || 
+		     chassis_move_control->chassis_RC->key.w || 
+		     chassis_move_control->chassis_RC->key.d))
+        {
+            wz_set *= 2;
+        }
+	}
+	chassis_move_control->wz_set = wz_set;
+    /*
+  if(q_flag == CHASSIS_ROTATE_OFF && chassis_move_control->chassis_RC->rc.ch[4] == 0)
    {
       wz_set = 0.0f;
      if(chassis_move_control->chassis_RC->key.f == 1)
@@ -300,7 +342,7 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
         gear_xy = gear_xylevel[2];
      }
     }      
-   else if(q_flag == -1 && chassis_move_control->chassis_RC->rc.ch[4] == 0)
+   else if(q_flag == CHASSIS_ROTATE_ON && chassis_move_control->chassis_RC->rc.ch[4] == 0)
    {
       wz_set = gear_z;
      //无水平运动则增加转速
@@ -312,10 +354,31 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
    else
    {
       wz_set = chassis_move_control->chassis_RC->rc.ch[4]*-0.0025f;
-   }
-
-    chassis_move_control->wz_set = wz_set;
-    if (chassis_move_control->chassis_mode == CHASSIS_FOLLOW_GIMBAL)
+   }*/
+    if (chassis_move_control->chassis_mode == CHASSIS_ZERO_FORCE)
+	{
+	    chassis_move_control->vx_set = 0.0;
+        chassis_move_control->vy_set = 0.0;
+        chassis_move_control->wz_set = 0.0;
+		return;
+	}
+	else if (chassis_move_control->chassis_mode == CHASSIS_FOLLOW_GIMBAL)
+	{
+	    vector_ground_convert(&vx_set, &vy_set, &chassis_move_control->chassis_absolute_angle);  
+	}
+	// CHASSIS_FOLLOW_GIMBAL and GIMBAL_FOLLOW_CHASSIS modes proceed
+	chassis_move_control->vx_set = vx_set;
+    chassis_move_control->vy_set = vy_set;
+    if (chassis_move_control->vx_set && chassis_move_control->vy_set)
+    {
+        chassis_move_control->vx_set *= 0.7f;
+        chassis_move_control->vy_set *= 0.7f;
+    }
+    chassis_move_control->vx_set = fp32_constrain(vx_set, chassis_move_control->vx_min_speed, chassis_move_control->vx_max_speed);
+    chassis_move_control->vy_set = fp32_constrain(vy_set, chassis_move_control->vy_min_speed, chassis_move_control->vy_max_speed);
+    
+    /*
+		if (chassis_move_control->chassis_mode == CHASSIS_FOLLOW_GIMBAL)
     {
         vector_ground_convert(&vx_set, &vy_set, &chassis_move_control->chassis_absolute_angle);  
 
@@ -347,7 +410,7 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
         chassis_move_control->vx_set = 0.0;
         chassis_move_control->vy_set = 0.0;
         chassis_move_control->wz_set = 0.0;
-    }
+    }*/
 }
 static void chassis_vector_to_mecanum_wheel_speed(const fp32 vx_set, const fp32 vy_set, const fp32 wz_set, fp32 wheel_speed[4])
 {
@@ -436,8 +499,6 @@ void chassis_rc_to_control_vector(fp32 *vx_set, fp32 *vy_set, chassis_move_t *ch
     rc_deadband_limit(chassis_move_rc_to_vector->chassis_RC->rc.ch[CHASSIS_X_CHANNEL], vx_channel, CHASSIS_RC_DEADLINE);
     rc_deadband_limit(chassis_move_rc_to_vector->chassis_RC->rc.ch[CHASSIS_Y_CHANNEL], vy_channel, CHASSIS_RC_DEADLINE);
 
-    
-
     // keyboard and RC control set
 	fp32 key_w_set = chassis_move_rc_to_vector->chassis_RC->key.s == 1 ? -gear_xy : 0;
     fp32 key_s_set = chassis_move_rc_to_vector->chassis_RC->key.s == 1 ? gear_xy : 0;
@@ -457,59 +518,6 @@ void chassis_rc_to_control_vector(fp32 *vx_set, fp32 *vy_set, chassis_move_t *ch
 	
 	*vx_set = vx_set_channel;
     *vy_set = vy_set_channel;
-    /*
-    if (chassis_move_rc_to_vector->chassis_RC->key.s ==1)
-    {
-        vx_set_channel = gear_xy;
-       if(chassis_move_rc_to_vector->wz_set == 0.0f)
-        {
-          vx_set_channel *= 1.1f;
-        }
-    }
-    else if (chassis_move_rc_to_vector->chassis_RC->key.w==1)
-    {
-        vx_set_channel = -gear_xy;
-      if(chassis_move_rc_to_vector->wz_set == 0.0f)
-        {
-          vx_set_channel *= 1.1f;
-        }
-    }
-    else if(chassis_move_rc_to_vector->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL] != CHASSIS_ZERO_FORCE)
-    {
-        vx_set_channel = vx_channel * -CHASSIS_VX_RC_SEN;
-    }
-    else
-    {
-        vx_set_channel = 0;
-    }
-
-    if (chassis_move_rc_to_vector->chassis_RC->key.d==1)
-    {
-        vy_set_channel = gear_xy;
-        if(chassis_move_rc_to_vector->wz_set == 0.0f)
-        {
-          vy_set_channel *= 1.1f;
-        }
-    }
-    else if (chassis_move_rc_to_vector->chassis_RC->key.a==1)
-    {
-        vy_set_channel = -gear_xy;
-        if(chassis_move_rc_to_vector->wz_set == 0.0f)
-        {
-          vy_set_channel *= 1.1f;
-        }
-    }    
-    else if (chassis_move_rc_to_vector->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL] != CHASSIS_ZERO_FORCE)
-    {
-        vy_set_channel = vy_channel * CHASSIS_VY_RC_SEN;
-    }
-    else
-    {
-        vy_set_channel = 0;
-    }
-    *vx_set = vx_set_channel;
-    *vy_set = vy_set_channel;
-	*/
 }
 
 static void vector_ground_convert(fp32 *vx_set, fp32 *vy_set, fp32* angle)
