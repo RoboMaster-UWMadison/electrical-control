@@ -124,9 +124,9 @@ static fp32    gear_xylevel[3],  /**< Stores corresponding translational speed l
 void chassis_task(void const *pvParameters)
 {
     //空闲一段时间
+	// Delay for chassis task init
     vTaskDelay(CHASSIS_TASK_INIT_TIME);
-    //底盘初始化
-    chassis_init(&chassis_move);
+    chassis_init(&chassis_move); // initialize values in chassis_move
     while (1)
     {
       //设置底盘控制模式
@@ -145,48 +145,63 @@ void chassis_task(void const *pvParameters)
 }
 /**
   * @brief         	Initialize chassis_move, including the initialization of pid, remote control pointer, 
-	* 												3508 chassis motor pointer, INS_angle
-	* 								初始化"chassis_move"变量，包括pid初始化， 遥控器指针初始化，3508底盘电机指针初始化，陀螺仪角度指针初始化
+  * 				3508 chassis motor pointer, INS_angle
+  * 				初始化"chassis_move"变量，包括pid初始化， 遥控器指针初始化，3508底盘电机指针初始化，陀螺仪角度指针初始化
   * @param[out]     chassis_move_init Output chassis_move_t struct pointer initialized
   */
 static void chassis_init(chassis_move_t *chassis_move_init)
 {
-    if (chassis_move_init == NULL)
+    if (chassis_move_init == NULL) // check for invalid pointer
     {
         return;
     }
     // chassis motor speed pid
-    const static fp32 motor_speed_pid[3] = {M3505_MOTOR_SPEED_PID_KP, M3505_MOTOR_SPEED_PID_KI, M3505_MOTOR_SPEED_PID_KD};    
-    const static fp32 motor_current_pid[3] = {M3505_MOTOR_CURRENT_PID_KP,M3505_MOTOR_CURRENT_PID_KI, M3505_MOTOR_CURRENT_PID_KD};  
-    const static fp32 chassis_x_order_filter[1] = {CHASSIS_ACCEL_X_NUM};
-    const static fp32 chassis_y_order_filter[1] = {CHASSIS_ACCEL_Y_NUM};
-    uint8_t i;
+    static const fp32 motor_speed_pid[3] = {M3505_MOTOR_SPEED_PID_KP, M3505_MOTOR_SPEED_PID_KI, M3505_MOTOR_SPEED_PID_KD};    
+    static const fp32 motor_current_pid[3] = {M3505_MOTOR_CURRENT_PID_KP,M3505_MOTOR_CURRENT_PID_KI, M3505_MOTOR_CURRENT_PID_KD};  
+    //static const fp32 chassis_x_order_filter[1] = {CHASSIS_ACCEL_X_NUM};
+    //static const fp32 chassis_y_order_filter[1] = {CHASSIS_ACCEL_Y_NUM};
+    //uint8_t i;
     chassis_move_init->chassis_mode = CHASSIS_ZERO_FORCE;
     // get chassis remote control pointer
     chassis_move_init->chassis_RC = get_remote_control_point();
-    // get gyroscrope attitude angle pointer as the gimbal yaw angle
+    // get gyroscope attitude angle pointer as the gimbal yaw angle
     chassis_move_init->chassis_INS_angle = get_yaw_gimbal_motor_measure_point();   
     // get chassis motor data pointer and initialize its pid
-    for (i = 0; i < 4; i++)
+    for (uint8_t i = 0; i < 4; i++)
     {
       chassis_move_init->motor_chassis[i].chassis_motor_measure = get_chassis_motor_measure_point(i);          
-      PID_Init(&chassis_move_init->motor_speed_pid[i],M3505_MOTOR_SPEED_PID_MAX_OUT,M3505_MOTOR_SPEED_PID_MAX_IOUT,
-      0.0f,motor_speed_pid[0],motor_speed_pid[1], motor_speed_pid[2],0.0f,0.0f,0.0f,0.0f, 0);
-      PID_init(&chassis_move_init->motor_current_pid[i],0,motor_current_pid,30000.0f,5000.0f);
+      PID_Init(&chassis_move_init->motor_speed_pid[i],
+		       M3505_MOTOR_SPEED_PID_MAX_OUT,
+		       M3505_MOTOR_SPEED_PID_MAX_IOUT,
+               0.0f,
+		       motor_speed_pid[0],
+		       motor_speed_pid[1],
+		       motor_speed_pid[2],
+		       0.0f,
+		       0.0f,
+		       0.0f,
+		       0.0f,
+		       0);
+      PID_init(&chassis_move_init->motor_current_pid[i],
+               PID_POSITION,
+               motor_current_pid,
+               MAX_MOTOR_CAN_CURRENT,
+		       MAX_PID_INTEGRAL_CURRENT); // extra limit on Integral b/c it increases really fast
     }
     //初始化角度PID
     
     //用一阶滤波代替斜波函数生成
-    first_order_filter_init(&chassis_move_init->chassis_cmd_slow_set_vx, CHASSIS_CONTROL_TIME, chassis_x_order_filter);
-    first_order_filter_init(&chassis_move_init->chassis_cmd_slow_set_vy, CHASSIS_CONTROL_TIME, chassis_y_order_filter);
+    //first_order_filter_init(&chassis_move_init->chassis_cmd_slow_set_vx, CHASSIS_CONTROL_TIME, chassis_x_order_filter);
+    //first_order_filter_init(&chassis_move_init->chassis_cmd_slow_set_vy, CHASSIS_CONTROL_TIME, chassis_y_order_filter);
     //最大 最小速度
     chassis_move_init->vx_max_speed = NORMAL_MAX_CHASSIS_SPEED_X;
     chassis_move_init->vx_min_speed = -NORMAL_MAX_CHASSIS_SPEED_X;
 
     chassis_move_init->vy_max_speed = NORMAL_MAX_CHASSIS_SPEED_Y;
     chassis_move_init->vy_min_speed = -NORMAL_MAX_CHASSIS_SPEED_Y;
-    //更新一下数据
+    
     q = 0;
+	last_q = 0;
     q_flag = 1;
     gear_zlevel[0] = 0.3f;
     gear_zlevel[1] = 0.5f;
@@ -199,8 +214,10 @@ static void chassis_init(chassis_move_t *chassis_move_init)
     chassis_feedback_update(chassis_move_init);
 }
 /**
-  * @brief          底盘测量数据更新，包括电机速度，欧拉角度，机器人速度
-  * @param[out]     chassis_move_update:"chassis_move"变量指针.
+  * @brief           update chassis data based on motor data update, including motor speeds, Euler angles, and robot speed   
+  *                  底盘测量数据更新，包括电机速度，欧拉角度，机器人速度
+  * @param[out]     chassis_move_update: "chassis_move" structure pointer.
+  *                                      "chassis_move"变量指针.
   * @retval         none
   */
 static void chassis_feedback_update(chassis_move_t *chassis_move_update)
@@ -222,12 +239,14 @@ static void chassis_feedback_update(chassis_move_t *chassis_move_update)
     chassis_move_update->vy =  (chassis_move_update->motor_chassis[0].speed - chassis_move_update->motor_chassis[1].speed - chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) * MOTOR_SPEED_TO_CHASSIS_SPEED_VY;
     chassis_move_update->wz =  (chassis_move_update->motor_chassis[0].speed + chassis_move_update->motor_chassis[1].speed + chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) * MOTOR_SPEED_TO_CHASSIS_SPEED_WZ / MOTOR_DISTANCE_TO_CENTER;
       
-    chassis_move_update->chassis_absolute_angle = motor_ecd_to_angle_change(chassis_move_update->chassis_INS_angle->ecd, 8191-6488);   
+    chassis_move_update->chassis_absolute_angle = motor_ecd_to_angle_change(chassis_move_update->chassis_INS_angle->ecd, 8191-6488); // <- TODO: set to macro?  
     
 }
 /**
-  * @brief          设置底盘控制模式，主要在'chassis_behaviour_mode_set'函数中改变
-  * @param[out]     chassis_move_mode:"chassis_move"变量指针.
+  * @brief          set chassis movement mode based on RC read
+  *                 设置底盘控制模式，主要在'chassis_behaviour_mode_set'函数中改变
+  * @param[out]     chassis_move_mode: "chassis_move" structure pointer.
+  *                                    "chassis_move"变量指针.
   * @retval         none
   */
 static void chassis_set_mode(chassis_move_t *chassis_move_mode)
@@ -239,6 +258,11 @@ static void chassis_set_mode(chassis_move_t *chassis_move_mode)
     chassis_behaviour_mode_set(chassis_move_mode);
 }
 
+/**
+  * @brief          
+  * @param[out]     
+  * @retval         none
+  */
 static void chassis_set_control(chassis_move_t *chassis_move_control)
 {
 
@@ -385,11 +409,16 @@ static void chassis_control_loop(chassis_move_t *chassis_move_control_loop)
     }
 }
 /**
-  * @brief          根据遥控器通道值，计算纵向和横移速度
+  * @brief          calculate longitudinal and lateral speed based on keyborad or remote control
+  *                 input values
+  *                 根据遥控器通道值，计算纵向和横移速度
   *                 
-  * @param[out]     vx_set: 纵向速度指针
-  * @param[out]     vy_set: 横向速度指针
-  * @param[out]     chassis_move_rc_to_vector: "chassis_move" 变量指针
+  * @param[out]     vx_set: longitudinal (forward/backward) speed variable pointer.
+  *                         纵向速度指针
+  * @param[out]     vy_set: lateral (left/right) speed variable pointer.
+  *                         横向速度指针
+  * @param[out]     chassis_move_rc_to_vector: "chassis_move" structure pointer.
+  *                                            "chassis_move" 变量指针
   * @retval         none
   */
 
@@ -409,10 +438,27 @@ void chassis_rc_to_control_vector(fp32 *vx_set, fp32 *vy_set, chassis_move_t *ch
 
     
 
-    //keyboard set speed set-point
-    //键盘控制
-
-      if (chassis_move_rc_to_vector->chassis_RC->key.s ==1)
+    // keyboard and RC control set
+	fp32 key_w_set = chassis_move_rc_to_vector->chassis_RC->key.s == 1 ? -gear_xy : 0;
+    fp32 key_s_set = chassis_move_rc_to_vector->chassis_RC->key.s == 1 ? gear_xy : 0;
+	fp32 key_a_set = chassis_move_rc_to_vector->chassis_RC->key.a == 1 ? -gear_xy : 0;
+	fp32 key_d_set = chassis_move_rc_to_vector->chassis_RC->key.d == 1 ? gear_xy : 0;
+	fp32 key_wz_set = chassis_move_rc_to_vector->wz_set == 0.0f ? 1.1f : 1.0f;
+	fp32 rc_mode_set = chassis_move_rc_to_vector->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL] != CHASSIS_ZERO_FORCE ? CHASSIS_VX_RC_SEN : 0;
+	vx_set_channel = 0;
+	vy_set_channel = 0;
+	if (key_w_set || key_s_set || key_d_set || key_a_set) {
+		vx_set_channel = (key_w_set + key_s_set) * key_wz_set;
+		vy_set_channel = (key_a_set + key_d_set) * key_wz_set;
+	} else if (rc_mode_set) {
+	    vx_set_channel = vx_channel * -CHASSIS_VX_RC_SEN;
+		vy_set_channel = vy_channel * CHASSIS_VY_RC_SEN;
+	}
+	
+	*vx_set = vx_set_channel;
+    *vy_set = vy_set_channel;
+    /*
+    if (chassis_move_rc_to_vector->chassis_RC->key.s ==1)
     {
         vx_set_channel = gear_xy;
        if(chassis_move_rc_to_vector->wz_set == 0.0f)
@@ -428,15 +474,15 @@ void chassis_rc_to_control_vector(fp32 *vx_set, fp32 *vy_set, chassis_move_t *ch
           vx_set_channel *= 1.1f;
         }
     }
-    else if(chassis_move_rc_to_vector->chassis_RC->rc.s[1] != 2)
+    else if(chassis_move_rc_to_vector->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL] != CHASSIS_ZERO_FORCE)
     {
-    vx_set_channel = vx_channel * -CHASSIS_VX_RC_SEN;
+        vx_set_channel = vx_channel * -CHASSIS_VX_RC_SEN;
     }
     else
     {
-      vx_set_channel = 0;
+        vx_set_channel = 0;
     }
-    
+
     if (chassis_move_rc_to_vector->chassis_RC->key.d==1)
     {
         vy_set_channel = gear_xy;
@@ -453,16 +499,17 @@ void chassis_rc_to_control_vector(fp32 *vx_set, fp32 *vy_set, chassis_move_t *ch
           vy_set_channel *= 1.1f;
         }
     }    
-    else if(chassis_move_rc_to_vector->chassis_RC->rc.s[1] != 2)
+    else if (chassis_move_rc_to_vector->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL] != CHASSIS_ZERO_FORCE)
     {
-    vy_set_channel = vy_channel * CHASSIS_VY_RC_SEN;
+        vy_set_channel = vy_channel * CHASSIS_VY_RC_SEN;
     }
     else
     {
-      vy_set_channel = 0;
+        vy_set_channel = 0;
     }
     *vx_set = vx_set_channel;
     *vy_set = vy_set_channel;
+	*/
 }
 
 static void vector_ground_convert(fp32 *vx_set, fp32 *vy_set, fp32* angle)

@@ -34,10 +34,12 @@
 #define CHASSIS_CONTROL_TIME_MS 2
 //底盘任务控制间隔 0.002s
 #define CHASSIS_CONTROL_TIME 0.002f
-//底盘任务控制频率，尚未使用这个宏
+//底盘任务控制频率
 #define CHASSIS_CONTROL_FREQUENCE 500.0f
 //底盘3508最大can发送电流值
 #define MAX_MOTOR_CAN_CURRENT 30000.0f
+//底盘3508最大PID Integral output current
+#define MAX_PID_INTEGRAL_CURRENT 5000.0f
 //底盘摇摆按键
 #define SWING_KEY KEY_PRESSED_OFFSET_CTRL
 //底盘前后左右控制按键
@@ -73,7 +75,7 @@ typedef enum
 {
   CHASSIS_FOLLOW_GIMBAL,     //底盘跟随云台
   GIMBAL_FOLLOW_CHASSIS,  //云台跟随底盘
-  CHASSIS_ZERO_FORCE,            //control-current will be sent to CAN bus derectly.
+  CHASSIS_ZERO_FORCE            /* <control-current will be sent to CAN bus derectly.*/
 } chassis_mode_e;
 
 typedef struct
@@ -97,8 +99,8 @@ typedef struct
   PID_TypeDef motor_speed_pid[4];             //底盘电机速度pid
   pid_type_def motor_current_pid[4];             //底盘电机速度pid
 
-  first_order_filter_type_t chassis_cmd_slow_set_vx;  //use first order filter to slow set-point.使用一阶低通滤波减缓设定值
-  first_order_filter_type_t chassis_cmd_slow_set_vy;  //use first order filter to slow set-point.使用一阶低通滤波减缓设定值
+  //first_order_filter_type_t chassis_cmd_slow_set_vx;  //use first order filter to slow set-point.使用一阶低通滤波减缓设定值
+  //first_order_filter_type_t chassis_cmd_slow_set_vy;  //use first order filter to slow set-point.使用一阶低通滤波减缓设定值
 
   fp32 vx;                          //底盘速度 前进方向 前为正，单位 m/s
   fp32 vy;                          //底盘速度 左右方向 左为正  单位 m/s

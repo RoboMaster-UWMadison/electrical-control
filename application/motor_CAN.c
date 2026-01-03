@@ -213,7 +213,7 @@ const motor_measure_t *get_fric_motor_l_measure_point(void)
   */
 const motor_measure_t *get_chassis_motor_measure_point(uint8_t i)
 {
-    return &motor_chassis[(i & 0x03)];
+    return &motor_chassis[(i & 0x03)]; // means < 4 ?
 }
 
 const motor_measure_t *get_chassis_imu_point(void)

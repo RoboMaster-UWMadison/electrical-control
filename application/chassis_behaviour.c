@@ -104,9 +104,10 @@ void chassis_behaviour_mode_set(chassis_move_t *chassis_move_mode)
         return;
     }
     //Ò£¿ØÆ÷ÉèÖÃÄ£Ê½
+	// set chassis movement mode based on RC read
     if (switch_is_mid(chassis_move_mode->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL]))
     {
-      chassis_move_mode->chassis_mode = GIMBAL_FOLLOW_CHASSIS; 
+        chassis_move_mode->chassis_mode = GIMBAL_FOLLOW_CHASSIS; 
     }
     else if (switch_is_down(chassis_move_mode->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL]))
     {
@@ -114,7 +115,7 @@ void chassis_behaviour_mode_set(chassis_move_t *chassis_move_mode)
     }
     else if (switch_is_up(chassis_move_mode->chassis_RC->rc.s[CHASSIS_MODE_CHANNEL]))
     {
-       chassis_move_mode->chassis_mode = CHASSIS_FOLLOW_GIMBAL; 
+        chassis_move_mode->chassis_mode = CHASSIS_FOLLOW_GIMBAL; 
     }
 }
 

@@ -304,25 +304,34 @@ static void f_PID_ErrorHandle(PID_TypeDef *pid)
 }
 
 /*****************PID structure initialize*********************/
-void PID_Init(
-    PID_TypeDef *pid,
-    uint16_t max_out,
-    uint16_t intergral_limit,
-    float deadband,
+void PID_Init(PID_TypeDef *pid,
+              uint16_t max_out,
+              uint16_t intergral_limit,
+              float deadband,
 
-    float kp,
-    float Ki,
-    float Kd,
+              float kp,
+              float Ki,
+              float Kd,
 
-    float A,
-    float B,
+              float A,
+              float B,
 
-    float output_filtering_coefficient,
-    float derivative_filtering_coefficient,
-    uint8_t improve)
+              float output_filtering_coefficient,
+              float derivative_filtering_coefficient,
+              uint8_t improve)
 {
     pid->PID_param_init = f_PID_param_init;
     pid->PID_reset = f_PID_reset;
-    pid->PID_param_init(pid, max_out, intergral_limit, deadband,
-                        kp, Ki, Kd, A, B, output_filtering_coefficient, derivative_filtering_coefficient, improve);
+    pid->PID_param_init(pid,
+                        max_out,
+                        intergral_limit,
+                        deadband,
+                        kp,
+                        Ki,
+                        Kd,
+                        A,
+                        B,
+                        output_filtering_coefficient,
+                        derivative_filtering_coefficient,
+	                    improve);
 }
