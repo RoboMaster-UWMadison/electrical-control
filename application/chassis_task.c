@@ -231,13 +231,22 @@ static void chassis_feedback_update(chassis_move_t *chassis_move_update)
     for (i = 0; i < 4; i++)
     {
         //更新电机速度，加速度是速度的PID微分
-        chassis_move_update->motor_chassis[i].speed = CHASSIS_MOTOR_RPM_TO_VECTOR_SEN * chassis_move_update->motor_chassis[i].chassis_motor_measure->speed_rpm;
+        chassis_move_update->motor_chassis[i].speed = CHASSIS_MOTOR_RPM_TO_VECTOR_SEN * 
+		                                              chassis_move_update->motor_chassis[i].chassis_motor_measure->speed_rpm;
         chassis_move_update->motor_chassis[i].accel = chassis_move_update->motor_speed_pid[i].Dbuf[0] * CHASSIS_CONTROL_FREQUENCE;
         chassis_move_update->motor_chassis[i].give_current = chassis_move_update->motor_chassis[i].chassis_motor_measure->given_current;
     }
-    chassis_move_update->vx = (-chassis_move_update->motor_chassis[0].speed - chassis_move_update->motor_chassis[1].speed + chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) * MOTOR_SPEED_TO_CHASSIS_SPEED_VX;
-    chassis_move_update->vy =  (chassis_move_update->motor_chassis[0].speed - chassis_move_update->motor_chassis[1].speed - chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) * MOTOR_SPEED_TO_CHASSIS_SPEED_VY;
-    chassis_move_update->wz =  (chassis_move_update->motor_chassis[0].speed + chassis_move_update->motor_chassis[1].speed + chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) * MOTOR_SPEED_TO_CHASSIS_SPEED_WZ / MOTOR_DISTANCE_TO_CENTER;
+    chassis_move_update->vx = (-chassis_move_update->motor_chassis[0].speed 
+	                           - chassis_move_update->motor_chassis[1].speed 
+	                           + chassis_move_update->motor_chassis[2].speed 
+	                           + chassis_move_update->motor_chassis[3].speed) 
+	                           * MOTOR_SPEED_TO_CHASSIS_SPEED_VX;
+    chassis_move_update->vy =  (chassis_move_update->motor_chassis[0].speed - chassis_move_update->motor_chassis[1].speed 
+	                           - chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) 
+	                           * MOTOR_SPEED_TO_CHASSIS_SPEED_VY;
+    chassis_move_update->wz =  (chassis_move_update->motor_chassis[0].speed + chassis_move_update->motor_chassis[1].speed 
+	                           + chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) 
+	                           * MOTOR_SPEED_TO_CHASSIS_SPEED_WZ / MOTOR_DISTANCE_TO_CENTER;
       
     chassis_move_update->chassis_absolute_angle = motor_ecd_to_angle_change(chassis_move_update->chassis_INS_angle->ecd, 8191-6488); // <- TODO: set to macro?  
     
@@ -322,39 +331,7 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
         }
 	}
 	chassis_move_control->wz_set = wz_set;
-    /*
-  if(q_flag == CHASSIS_ROTATE_OFF && chassis_move_control->chassis_RC->rc.ch[4] == 0)
-   {
-      wz_set = 0.0f;
-     if(chassis_move_control->chassis_RC->key.f == 1)
-     {
-       gear_z = gear_zlevel[0];
-       gear_xy = gear_xylevel[0];
-     }
-     else if(chassis_move_control->chassis_RC->key.g == 1)
-     {
-        gear_z = gear_zlevel[1];
-        gear_xy = gear_xylevel[1];
-     }
-     else if(chassis_move_control->chassis_RC->key.v == 1)
-     {
-        gear_z = gear_zlevel[2];
-        gear_xy = gear_xylevel[2];
-     }
-    }      
-   else if(q_flag == CHASSIS_ROTATE_ON && chassis_move_control->chassis_RC->rc.ch[4] == 0)
-   {
-      wz_set = gear_z;
-     //无水平运动则增加转速
-     if((chassis_move_control->chassis_RC->key.s || chassis_move_control->chassis_RC->key.a || chassis_move_control->chassis_RC->key.w || chassis_move_control->chassis_RC->key.d) == 0)
-       {
-        wz_set *= 2;
-        }
-   }
-   else
-   {
-      wz_set = chassis_move_control->chassis_RC->rc.ch[4]*-0.0025f;
-   }*/
+	
     if (chassis_move_control->chassis_mode == CHASSIS_ZERO_FORCE)
 	{
 	    chassis_move_control->vx_set = 0.0;
@@ -362,55 +339,18 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
         chassis_move_control->wz_set = 0.0;
 		return;
 	}
-	else if (chassis_move_control->chassis_mode == CHASSIS_FOLLOW_GIMBAL)
+	
+	if (vx_set && vy_set) {
+		vx_set *= 0.7f;
+		vy_set *= 0.7f;
+	}
+	if (chassis_move_control->chassis_mode == CHASSIS_FOLLOW_GIMBAL)
 	{
 	    vector_ground_convert(&vx_set, &vy_set, &chassis_move_control->chassis_absolute_angle);  
 	}
 	// CHASSIS_FOLLOW_GIMBAL and GIMBAL_FOLLOW_CHASSIS modes proceed
-	chassis_move_control->vx_set = vx_set;
-    chassis_move_control->vy_set = vy_set;
-    if (chassis_move_control->vx_set && chassis_move_control->vy_set)
-    {
-        chassis_move_control->vx_set *= 0.7f;
-        chassis_move_control->vy_set *= 0.7f;
-    }
     chassis_move_control->vx_set = fp32_constrain(vx_set, chassis_move_control->vx_min_speed, chassis_move_control->vx_max_speed);
     chassis_move_control->vy_set = fp32_constrain(vy_set, chassis_move_control->vy_min_speed, chassis_move_control->vy_max_speed);
-    
-    /*
-		if (chassis_move_control->chassis_mode == CHASSIS_FOLLOW_GIMBAL)
-    {
-        vector_ground_convert(&vx_set, &vy_set, &chassis_move_control->chassis_absolute_angle);  
-
-        chassis_move_control->vx_set = vx_set;
-        chassis_move_control->vy_set = vy_set;
-        if(chassis_move_control->vx_set != 0.0f && chassis_move_control->vy_set !=0.0f)
-        {
-          chassis_move_control->vx_set *= 0.7f;
-          chassis_move_control->vy_set *= 0.7f;
-        }
-        chassis_move_control->vx_set = fp32_constrain(chassis_move_control->vx_set, chassis_move_control->vx_min_speed, chassis_move_control->vx_max_speed);
-        chassis_move_control->vy_set = fp32_constrain(chassis_move_control->vy_set, chassis_move_control->vy_min_speed, chassis_move_control->vy_max_speed);
-    }
-    else if (chassis_move_control->chassis_mode == GIMBAL_FOLLOW_CHASSIS)
-      
-    {   
-        chassis_move_control->vx_set = vx_set;
-        chassis_move_control->vy_set = vy_set;
-      if(chassis_move_control->vx_set != 0.0f && chassis_move_control->vy_set !=0.0f)
-        {
-          chassis_move_control->vx_set *= 0.7f;
-          chassis_move_control->vy_set *= 0.7f;
-        }
-        chassis_move_control->vx_set = fp32_constrain(vx_set, chassis_move_control->vx_min_speed, chassis_move_control->vx_max_speed);
-        chassis_move_control->vy_set = fp32_constrain(vy_set, chassis_move_control->vy_min_speed, chassis_move_control->vy_max_speed);
-    }
-    else if (chassis_move_control->chassis_mode == CHASSIS_ZERO_FORCE)
-    {
-        chassis_move_control->vx_set = 0.0;
-        chassis_move_control->vy_set = 0.0;
-        chassis_move_control->wz_set = 0.0;
-    }*/
 }
 static void chassis_vector_to_mecanum_wheel_speed(const fp32 vx_set, const fp32 vy_set, const fp32 wz_set, fp32 wheel_speed[4])
 {
@@ -500,7 +440,7 @@ void chassis_rc_to_control_vector(fp32 *vx_set, fp32 *vy_set, chassis_move_t *ch
     rc_deadband_limit(chassis_move_rc_to_vector->chassis_RC->rc.ch[CHASSIS_Y_CHANNEL], vy_channel, CHASSIS_RC_DEADLINE);
 
     // keyboard and RC control set
-	fp32 key_w_set = chassis_move_rc_to_vector->chassis_RC->key.s == 1 ? -gear_xy : 0;
+	fp32 key_w_set = chassis_move_rc_to_vector->chassis_RC->key.w == 1 ? -gear_xy : 0;
     fp32 key_s_set = chassis_move_rc_to_vector->chassis_RC->key.s == 1 ? gear_xy : 0;
 	fp32 key_a_set = chassis_move_rc_to_vector->chassis_RC->key.a == 1 ? -gear_xy : 0;
 	fp32 key_d_set = chassis_move_rc_to_vector->chassis_RC->key.d == 1 ? gear_xy : 0;
@@ -520,17 +460,25 @@ void chassis_rc_to_control_vector(fp32 *vx_set, fp32 *vy_set, chassis_move_t *ch
     *vy_set = vy_set_channel;
 }
 
+/**
+  * @brief             Used for CHASSIS_FOLLOW_GIMBAL mode to convert absolute vx and vy into 
+  *                    relative speed regarding the chassis angle
+  * @param[out]        vx_set: pointer to variable holding velocity in the x direction.
+  * @param[out]        vy_set: pointer to variable holding velocity int he y direction.
+  * @param[in]         angle: absolute angle of chassis that vx and vy should change according to.
+  * @retval            none
+  */
 static void vector_ground_convert(fp32 *vx_set, fp32 *vy_set, fp32* angle)
 {
-   fp32 R[2][2];
-   fp32 vl[2];
-   vl[0] = *vx_set;
-   vl[1] = *vy_set;
-   R[0][0] = arm_cos_f32(*angle);  R[0][1] = -arm_sin_f32(*angle);
-   R[1][0] =arm_sin_f32(*angle);  R[1][1] = arm_cos_f32(*angle);
-   *vx_set = R[0][0]*vl[0] + R[0][1]*vl[1];
-   *vy_set = R[1][0]*vl[0] + R[1][1]*vl[1];
-  osDelay(2);
+    fp32 R[2][2];
+    fp32 vl[2];
+    vl[0] = *vx_set;
+    vl[1] = *vy_set;
+    R[0][0] = arm_cos_f32(*angle);  R[0][1] = -arm_sin_f32(*angle);
+    R[1][0] =arm_sin_f32(*angle);  R[1][1] = arm_cos_f32(*angle);
+    *vx_set = R[0][0]*vl[0] + R[0][1]*vl[1];
+    *vy_set = R[1][0]*vl[0] + R[1][1]*vl[1];
+    osDelay(2);
 }
 
 /**
