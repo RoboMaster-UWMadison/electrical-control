@@ -22,6 +22,18 @@
         }                                                \
     }
 
+#define wz_limit(input, output, range)        \
+    {                                                    \
+        if ((input) <= (range) || (input) >= -(range))   \
+        {                                                \
+            (output) = (input);                          \
+        }                                                \
+        else                                             \
+        {                                                \
+            (output) = (range) * (input) / (input);      \
+        }                                                \
+    }
+
 /**
   * @brief         	Initialize chassis_move, including the initialization of pid, remote control pointer, 
   * 				3508 chassis motor pointer, and INS_angle pointer.
@@ -70,6 +82,17 @@ static void chassis_set_control(chassis_move_t *chassis_move_control);
   * @retval         none
   */
 static void chassis_control_loop(chassis_move_t *chassis_move_control_loop);
+
+/**
+  * @brief          Calculate relative ecd with ecd and offset_ecd.
+  *                 计算ecd与offset_ecd之间的相对角度
+  * @param[in]      ecd: Motor current encoding.
+  *                      电机当前编码
+  * @param[in]      offset_ecd: User set offset by motor installation.
+  *                             电机中值编码
+  * @retval         Relative ecd.
+  */
+static fp32 motor_ecd_to_relative_ecd(uint16_t ecd, uint16_t offset_ecd);
 
 /**
   * @brief          Global pointer to chassis current data.
@@ -216,9 +239,9 @@ static void chassis_init(chassis_move_t *chassis_move_init)
 /**
   * @brief           update chassis data based on motor data update, including motor speeds, Euler angles, and robot speed   
   *                  底盘测量数据更新，包括电机速度，欧拉角度，机器人速度
-  * @param[out]     chassis_move_update: "chassis_move" structure pointer.
-  *                                      "chassis_move"变量指针.
-  * @retval         none
+  * @param[out]      chassis_move_update: "chassis_move" structure pointer.
+  *                                       "chassis_move"变量指针.
+  * @retval          none
   */
 static void chassis_feedback_update(chassis_move_t *chassis_move_update)
 {
@@ -248,7 +271,7 @@ static void chassis_feedback_update(chassis_move_t *chassis_move_update)
 	                           + chassis_move_update->motor_chassis[2].speed + chassis_move_update->motor_chassis[3].speed) 
 	                           * MOTOR_SPEED_TO_CHASSIS_SPEED_WZ / MOTOR_DISTANCE_TO_CENTER;
       
-    chassis_move_update->chassis_absolute_angle = motor_ecd_to_angle_change(chassis_move_update->chassis_INS_angle->ecd, 8191-6488); // <- TODO: set to macro?  
+    chassis_move_update->chassis_absolute_angle = motor_ecd_to_angle_change(chassis_move_update->chassis_INS_angle->ecd, CHASSIS_ECD_OFFSET);
     
 }
 /**
@@ -279,6 +302,13 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
     {
         return;
     }
+	if (chassis_move_control->chassis_mode == CHASSIS_ZERO_FORCE)
+	{
+	    chassis_move_control->vx_set = 0.0;
+        chassis_move_control->vy_set = 0.0;
+        chassis_move_control->wz_set = 0.0;
+		return;
+	}
     fp32 vx_set = 0.0f, vy_set = 0.0f, wz_set = 0.0f;
     //获取三个控制设置值
 	// get longitudinal and lateral values
@@ -316,6 +346,8 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
             gear_z = gear_zlevel[2];
             gear_xy = gear_xylevel[2];
         }
+		fp32 temp = gear_z / HALF_ECD_RANGE * (-1 * motor_ecd_to_relative_ecd(chassis_move_control->chassis_INS_angle->ecd, CHASSIS_FRONT_ECD));
+		wz_limit(temp, wz_set, gear_z);
 	}
 	else if (q_flag == CHASSIS_ROTATE_ON)
 	{
@@ -330,15 +362,6 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
             wz_set *= 2;
         }
 	}
-	chassis_move_control->wz_set = wz_set;
-	
-    if (chassis_move_control->chassis_mode == CHASSIS_ZERO_FORCE)
-	{
-	    chassis_move_control->vx_set = 0.0;
-        chassis_move_control->vy_set = 0.0;
-        chassis_move_control->wz_set = 0.0;
-		return;
-	}
 	
 	if (vx_set && vy_set) {
 		vx_set *= 0.7f;
@@ -351,6 +374,7 @@ static void chassis_set_control(chassis_move_t *chassis_move_control)
 	// CHASSIS_FOLLOW_GIMBAL and GIMBAL_FOLLOW_CHASSIS modes proceed
     chassis_move_control->vx_set = fp32_constrain(vx_set, chassis_move_control->vx_min_speed, chassis_move_control->vx_max_speed);
     chassis_move_control->vy_set = fp32_constrain(vy_set, chassis_move_control->vy_min_speed, chassis_move_control->vy_max_speed);
+	chassis_move_control->wz_set = wz_set;
 }
 static void chassis_vector_to_mecanum_wheel_speed(const fp32 vx_set, const fp32 vy_set, const fp32 wz_set, fp32 wheel_speed[4])
 {
@@ -482,14 +506,17 @@ static void vector_ground_convert(fp32 *vx_set, fp32 *vy_set, fp32* angle)
 }
 
 /**
-  * @brief          计算ecd与offset_ecd之间的相对角度
-  * @param[in]      ecd: 电机当前编码
-  * @param[in]      offset_ecd: 电机中值编码
-  * @retval         相对角度，单位rad
+  * @brief          Calculate relative ecd with ecd and offset_ecd.
+  *                 计算ecd与offset_ecd之间的相对角度
+  * @param[in]      ecd: Motor current encoding.
+  *                      电机当前编码
+  * @param[in]      offset_ecd: User set offset by motor installation.
+  *                             电机中值编码
+  * @retval         Relative ecd.
   */
-static fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd)
+static fp32 motor_ecd_to_relative_ecd(uint16_t ecd, uint16_t offset_ecd)
 {
-    int32_t relative_ecd = ecd - offset_ecd;
+	int32_t relative_ecd = ecd - offset_ecd;
     if (relative_ecd > HALF_ECD_RANGE)
     {
         relative_ecd -= ECD_RANGE;
@@ -498,8 +525,23 @@ static fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd)
     {
         relative_ecd += ECD_RANGE;
     }
+	return relative_ecd;
+}
 
-    return relative_ecd * 0.000766990394f; //      2*  PI  /8192
+/**
+  * @brief          Calculate relative angle with ecd and offset_ecd.
+  *                 计算ecd与offset_ecd之间的相对角度
+  * @param[in]      ecd: Motor current encoding.
+  *                      电机当前编码
+  * @param[in]      offset_ecd: User set offset by motor installation.
+  *                             电机中值编码
+  * @retval         Relative angle in unit radian.
+  *                 相对角度，单位rad
+  */
+static fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd)
+{
+    fp32 relative_ecd = motor_ecd_to_relative_ecd(ecd, offset_ecd);
+    return relative_ecd * 0.000766990394f; //      2 * PI  /8192
 }
 
 

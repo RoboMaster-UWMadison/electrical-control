@@ -63,9 +63,11 @@
 #define M3505_MOTOR_CURRENT_PID_KP 0.5f
 #define M3505_MOTOR_CURRENT_PID_KI 0.2f
 #define M3505_MOTOR_CURRENT_PID_KD 0.0f
-// offset to correct gimbal absolute angle in CHASSIS_FOLLOW_GIMBAL mode
-#define CHASSIS_ANGLE_OFFSET 400
 
+// offset to correct gimbal absolute angle in CHASSIS_FOLLOW_GIMBAL mode, might need to change after reassembling the robot
+#define CHASSIS_ECD_OFFSET 2327
+// chassis relative angle to gimbal when robot self rotation is off
+#define CHASSIS_FRONT_ECD 6464
 //电机码盘值最大以及中值
 #define HALF_ECD_RANGE  4096
 #define ECD_RANGE       8191
