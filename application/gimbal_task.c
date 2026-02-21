@@ -13,54 +13,78 @@
 #include "bsp_buzzer.h"
 #include "miniPC_control.h"
 #include "volt.h"
+
+//English comment on top line
+//Original Chinese comment on bottom line
+
 /**
-  * @brief          初始化"gimbal_control"变量，包括pid初始化， 遥控器指针初始化，云台电机指针初始化，陀螺仪角度指针初始化
-  * @param[out]     init:"gimbal_control"变量指针.
+  * @brief          initialize gimbal control pointer, pid, remote control pointer, gimbal motor pointer, gyro angle pointer
+                        初始化"gimbal_control"变量，包括pid初始化， 遥控器指针初始化，云台电机指针初始化，陀螺仪角度指针初始化
+  * @param[out]     init: gimbal_control pointer
+                        init:"gimbal_control"变量指针.
   * @retval         none
   */
 static void gimbal_init(gimbal_control_t *init);
+
 /**
-  * @brief          设置云台控制模式，主要在'gimbal_behaviour_mode_set'函数中改变
-  * @param[out]     gimbal_set_mode:"gimbal_control"变量指针.
+  * @brief          change gimbal mode
+  *                     设置云台控制模式，主要在'gimbal_behaviour_mode_set'函数中改变
+  * @param[out]     set_mode: gimbal_control pointer
+  *                     gimbal_set_mode:"gimbal_control"变量指针.
   * @retval         none
   */
 static void gimbal_set_mode(gimbal_control_t *set_mode);
+
 /**
-  * @brief          底盘测量数据更新，包括电机速度，欧拉角度，机器人速度
-  * @param[out]     gimbal_feedback_update:"gimbal_control"变量指针.
+  * @brief          Update chassis measurement data: motor speed, Euler angle, robot speed
+  *                     底盘测量数据更新，包括电机速度，欧拉角度，机器人速度
+  * @param[out]     feedback_update: gimbal_control pointer
+  *                     gimbal_feedback_update:"gimbal_control"变量指针.
   * @retval         none
   */
 static void gimbal_feedback_update(gimbal_control_t *feedback_update);
 
 
 /**
-  * @brief          云台模式改变，有些参数需要改变，例如控制yaw角度设定值应该变成当前yaw角度
-  * @param[out]     mode_change:"gimbal_control"变量指针.
+  * @brief          Update some parameters when changing the mode: set yaw angle set point will be changed to current yaw angle
+  *                     云台模式改变，有些参数需要改变，例如控制yaw角度设定值应该变成当前yaw角度
+  * @param[out]     mode_change: gimbal_control pointer
+  *                     mode_change:"gimbal_control"变量指针.
   * @retval         none
   */
 static void gimbal_mode_change_control_transit(gimbal_control_t *mode_change);
 
 /**
-  * @brief          计算ecd与offset_ecd之间的相对角度
-  * @param[in]      ecd: 电机当前编码
-  * @param[in]      offset_ecd: 电机中值编码
-  * @retval         相对角度，单位rad
+  * @brief          Calculate relative angle of ecd(encoder count data) and offset_ecd
+  *                     计算ecd与offset_ecd之间的相对角度
+  * @param[in]      ecd: current motor encoder value
+  *                     ecd: 电机当前编码
+  * @param[in]      offset_ecd: midpoint motor encoder value
+  *                     offset_ecd: 电机中值编码
+  * @retval         relative angle in radians
+  *                     相对角度，单位rad
   */
 static fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd);
 
 /**
-  * @brief          设置云台控制设定值，控制值是通过gimbal_behaviour_control_set函数设置的
-  * @param[out]     gimbal_set_control:"gimbal_control"变量指针.
+  * @brief          Set gimbal control setpoints. The control values are set in gimbal_behaviour_control_set()
+  *                     设置云台控制设定值，控制值是通过gimbal_behaviour_control_set函数设置的
+  * @param[out]     set_control: gimbal_control pointer
+  *                     gimbal_set_control:"gimbal_control"变量指针.
   * @retval         none
   */
 static void gimbal_set_control(gimbal_control_t *set_control);
 
 /**
-  * @brief          控制循环，根据控制设定值，计算电机电流值，进行控制
-  * @param[out]     gimbal_control_loop:"gimbal_control"变量指针.
+  * @brief          Control loop to calculate motor current using control setpoints
+  *                     控制循环，根据控制设定值，计算电机电流值，进行控制
+  * @param[out]     control_loop: gimbal_control pointer
+  *                     gimbal_control_loop:"gimbal_control"变量指针.
   * @retval         none
   */
 static void gimbal_control_loop(gimbal_control_t *control_loop);
+
+//[unused]
 /**
   * @brief          云台角度PID计算, 因为角度范围在(-pi,pi)，不能用PID.c的PID
   * @param[out]     pid:云台PID指针
@@ -68,44 +92,55 @@ static void gimbal_control_loop(gimbal_control_t *control_loop);
   * @param[in]      set: 角度设定
   * @retval         pid 输出
   */
-/** [unused]
-static float PID_Calculate_gimbal(PID_TypeDef *pid, float measure, float target); */
+//static float PID_Calculate_gimbal(PID_TypeDef *pid, float measure, float target);
+
 /**
-  * @brief          云台控制模式:GIMBAL_MOTOR_GYRO，使用陀螺仪计算的欧拉角进行控制
-  * @param[out]     gimbal_motor:yaw电机或者pitch电机
+  * @brief          mode: GIMBAL_MOTOR_GYRO, control using Euler angles from gyroscope
+  *                     云台控制模式:GIMBAL_MOTOR_GYRO，使用陀螺仪计算的欧拉角进行控制
+  * @param[out]     gimbal_motor: yaw or pitch motor
+  *                     gimbal_motor:yaw电机或者pitch电机
   * @retval         none
   */
 static void gimbal_absolute_angle_limit(gimbal_motor_t *gimbal_motor, fp32 add);
+
 /**
-  * @brief          云台控制模式:GIMBAL_MOTOR_ENCONDE，使用编码相对角进行控制
-  * @param[out]     gimbal_motor:yaw电机或者pitch电机
+  * @brief          mode: GIMBAL_MOTOR_ENCONDE, control using encoder relative angle
+	*											云台控制模式:GIMBAL_MOTOR_ENCONDE，使用编码相对角进行控制
+  * @param[out]     gimbal_motor: yaw or pitch motor
+	*											gimbal_motor:yaw电机或者pitch电机
   * @retval         none
   */
 static void gimbal_relative_angle_limit(gimbal_motor_t *gimbal_motor, fp32 add);
+
 //gimbal control data
-//云台控制所有相关数据
+//		云台控制所有相关数据
 gimbal_control_t gimbal_control;
 fp32 pitch_g_offset=0;
-//motor current 
-//发送的电机电流
+
+//motor current to be sent
+//		发送的电机电流
 int16_t yaw_can_set_current = 0, pitch_can_set_current = 0;
 extern fp32 INS_angle_fusion[3];
 extern fp32  miniPC_pitch,miniPC_yaw,fire;
+
 void gimbal_task(void const *pvParameters)
 {
+  //initialization
   vTaskDelay(200);
   gimbal_init(&gimbal_control);
-  play_max();
+  play_max(); //startup audio, du du du-duu
+  
+  //gimbal task infinite loop
   while(1)
   {
-     gimbal_set_mode(&gimbal_control);                    //设置云台控制模式
-     gimbal_mode_change_control_transit(&gimbal_control); //控制模式切换 控制数据过渡
-     gimbal_feedback_update(&gimbal_control);             //云台数据反馈
-     gimbal_set_control(&gimbal_control);                 //设置云台控制量
-     gimbal_control_loop(&gimbal_control);                //云台控制PID计算
-     yaw_can_set_current = gimbal_control.gimbal_yaw_motor.given_current;
-     pitch_can_set_current =  gimbal_control.gimbal_pitch_motor.given_current;
-     CAN_cmd_GIMBAL(yaw_can_set_current, pitch_can_set_current);          
+     gimbal_set_mode(&gimbal_control);                      //set gimbal control mode                 //设置云台控制模式
+     gimbal_mode_change_control_transit(&gimbal_control);   //send control data after setting mode    //控制模式切换 控制数据过渡
+     gimbal_feedback_update(&gimbal_control);               //gimbal data feedback                    //云台数据反馈
+     gimbal_set_control(&gimbal_control);                   //set gimbal control commands              //设置云台控制量
+     gimbal_control_loop(&gimbal_control);                  //PID control calculation                 //云台控制PID计算
+     yaw_can_set_current = gimbal_control.gimbal_yaw_motor.given_current;       //pitch: up and down rotation
+     pitch_can_set_current =  gimbal_control.gimbal_pitch_motor.given_current;  //yaw: left and right rotation
+     CAN_cmd_GIMBAL(yaw_can_set_current, pitch_can_set_current);                //send yaw and pitch currents over CAN
        
      vTaskDelay(1);
   }
